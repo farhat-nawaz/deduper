@@ -1,4 +1,7 @@
-#[derive(Debug)]
+use thiserror::Error;
+
+#[derive(Debug, Error)]
 pub enum DedupError {
-    FileReadError,
+    #[error("failed to read file")]
+    FileRead(#[from] std::io::Error),
 }

@@ -6,4 +6,5 @@ edition = "2024"
 [dependencies]
 blake3 = "1.8.6"
 tempfile = "3.27.0"
+thiserror = "2.0.20"
 walkdir = "2.5.0"
