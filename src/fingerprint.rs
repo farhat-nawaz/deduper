@@ -7,7 +7,6 @@ use std::{
 use blake3::{Hash, Hasher};
 
 use super::DedupError;
-use thiserror::Error;
 
 const CHUNK_SIZE: u64 = 64 * 1024;
 const SAMPLE_SIZE: u64 = 3 * CHUNK_SIZE;

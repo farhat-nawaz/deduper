@@ -15,26 +15,18 @@
 //    keep that file
 //    remove the others
 
-use std::{collections::HashMap, path::PathBuf};
+use std::path::PathBuf;
 
+mod duplicates;
 mod error;
 mod files;
 mod fingerprint;
 
 pub use error::DedupError;
-use fingerprint::{Fingerprint, fingerprint_file};
 
 fn main() {
     let root_dir = PathBuf::from("/Users/farhatnawaz/Developer/projects/rust/deduper/test_data/");
-    let all_files = files::find_files(&root_dir).unwrap();
-    let mut fingerprints: HashMap<Fingerprint, Vec<PathBuf>> = HashMap::new();
-
-    for file in all_files {
-        let fingerprint = fingerprint_file(&file).unwrap();
-        fingerprints
-            .entry(fingerprint)
-            .and_modify(|entries| entries.push(file.clone()))
-            .or_insert(vec![file]);
-    }
-    println!("{:?}", fingerprints);
+    let files = files::find_files(&root_dir).unwrap();
+    let candidates = duplicates::find_candidates(&files);
+    println!("{:?}", candidates);
 }
