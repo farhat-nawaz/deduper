@@ -6,9 +6,11 @@ use std::{
 
 use blake3::{Hash, Hasher};
 
-use super::DedupError;
+use crate::error::DedupError;
 
+// chunk of 64kb
 const CHUNK_SIZE: u64 = 64 * 1024;
+// sample size of 192kb total
 const SAMPLE_SIZE: u64 = 3 * CHUNK_SIZE;
 
 /// A cheap, content-based fingerprint used to group candidate duplicates.

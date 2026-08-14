@@ -27,6 +27,7 @@ pub use error::DedupError;
 fn main() {
     let root_dir = PathBuf::from("/Users/farhatnawaz/Developer/projects/rust/deduper/test_data/");
     let files = files::find_files(&root_dir).unwrap();
-    let candidates = duplicates::find_candidates(&files);
-    println!("{:?}", candidates);
+    let candidates = duplicates::find_candidates(&files).unwrap();
+    let duplicates = duplicates::find_duplicates(&candidates);
+    dbg!("{:?}", duplicates);
 }
