@@ -17,6 +17,7 @@
 
 use std::path::PathBuf;
 
+mod dedup;
 mod duplicates;
 mod error;
 mod files;
@@ -28,6 +29,8 @@ fn main() {
     let root_dir = PathBuf::from("/Users/farhatnawaz/Developer/projects/rust/deduper/test_data/");
     let files = files::find_files(&root_dir).unwrap();
     let candidates = duplicates::find_candidates(&files).unwrap();
-    let duplicates = duplicates::find_duplicates(&candidates);
-    dbg!("{:?}", duplicates);
+    let duplicates = duplicates::find_duplicates(&candidates).unwrap();
+    let files_to_delete = dedup::choose_files_to_delete(&duplicates).unwrap();
+    let _ = dedup::delete_files(files_to_delete);
+    // dbg!(&duplicates);
 }

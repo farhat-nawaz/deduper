@@ -11,7 +11,7 @@ pub fn find_candidates(
     let mut fingerprints: HashMap<Fingerprint, Vec<&PathBuf>> = HashMap::new();
 
     for file in files {
-        let fingerprint = fingerprint_file(&file)?;
+        let fingerprint = fingerprint_file(file)?;
         fingerprints.entry(fingerprint).or_default().push(file);
     }
 
