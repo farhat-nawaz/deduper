@@ -1,7 +1,9 @@
 use std::{fs, path::Path};
 
+use crate::cli::{Action, Options};
+use crate::duplicates;
 use crate::error::DedupError;
-use anyhow::Context;
+use crate::files;
 
 /// By default, the last modified version of the file is kept
 pub fn choose_files_to_delete<'a>(files: &[Vec<&'a Path>]) -> Result<Vec<&'a Path>, DedupError> {
@@ -22,12 +24,43 @@ pub fn choose_files_to_delete<'a>(files: &[Vec<&'a Path>]) -> Result<Vec<&'a Pat
     Ok(files_to_remove)
 }
 
-pub fn delete_files(files: Vec<&Path>) -> Result<(), DedupError> {
+pub fn delete(files: &[&Path]) -> Result<(), DedupError> {
     for file in files {
-        // fs::File::open(file).with_context(|| format!("Could not open file {}", file.display()))?;
         // fs::remove_file(file)?;
         println!("Removing '{}'", file.display());
     }
 
+    Ok(())
+}
+
+fn dry_run(files: &[&Path]) {
+    println!("Dry run — no files will be deleted.");
+    println!();
+
+    if files.is_empty() {
+        println!("No duplicate files found.");
+        return;
+    }
+
+    println!("Files that would be deleted:");
+
+    for file in files {
+        println!("  {}", file.display());
+    }
+
+    println!();
+    println!("{} file(s) would be deleted.", files.len());
+}
+
+pub fn run(options: Options) -> Result<(), DedupError> {
+    let files = files::find_files(&options.root_dir)?;
+    let candidates = duplicates::find_candidates(&files)?;
+    let duplicates = duplicates::find_duplicates(&candidates)?;
+    let files_to_delete = choose_files_to_delete(&duplicates)?;
+
+    match options.action {
+        Action::DryRun => dry_run(&files_to_delete),
+        Action::Delete => delete(&files_to_delete)?,
+    }
     Ok(())
 }

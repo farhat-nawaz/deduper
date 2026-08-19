@@ -11,11 +11,16 @@ pub struct Options {
 
     /// whether to actually delete duplicates, or just dry-run
     #[arg(long, value_enum, default_value_t = Action::DryRun)]
-    pub(crate) delete: Action,
+    pub(crate) action: Action,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
-enum Action {
+pub enum Action {
     DryRun,
     Delete,
+}
+
+pub enum KeepPolicy {
+    Newest,
+    Oldest,
 }

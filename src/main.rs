@@ -27,11 +27,7 @@ use clap::Parser;
 fn main() -> anyhow::Result<()> {
     let options = cli::Options::parse();
 
-    let files = files::find_files(&options.root_dir)?;
-    let candidates = duplicates::find_candidates(&files)?;
-    let duplicates = duplicates::find_duplicates(&candidates)?;
-    let files_to_delete = dedup::choose_files_to_delete(&duplicates)?;
-    dedup::delete_files(files_to_delete)?;
+    dedup::run(options)?;
     // dbg!(&duplicates);
 
     Ok(())
