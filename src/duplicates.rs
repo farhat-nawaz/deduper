@@ -9,10 +9,8 @@ use blake3::{Hash, Hasher};
 use crate::error::DedupError;
 use crate::fingerprint::{Fingerprint, fingerprint_file};
 
-pub fn find_candidates(
-    files: &[PathBuf],
-) -> Result<HashMap<Fingerprint, Vec<&PathBuf>>, DedupError> {
-    let mut fingerprints: HashMap<Fingerprint, Vec<&PathBuf>> = HashMap::new();
+pub fn find_candidates(files: &[PathBuf]) -> Result<HashMap<Fingerprint, Vec<&Path>>, DedupError> {
+    let mut fingerprints: HashMap<Fingerprint, Vec<&Path>> = HashMap::new();
 
     for file in files {
         let fingerprint = fingerprint_file(file)?;
@@ -24,9 +22,9 @@ pub fn find_candidates(
 }
 
 pub fn find_duplicates<'a>(
-    candidates: &HashMap<Fingerprint, Vec<&'a PathBuf>>,
-) -> Result<Vec<Vec<&'a PathBuf>>, DedupError> {
-    let mut duplicates: HashMap<Hash, Vec<&PathBuf>> = HashMap::new();
+    candidates: &HashMap<Fingerprint, Vec<&'a Path>>,
+) -> Result<Vec<Vec<&'a Path>>, DedupError> {
+    let mut duplicates: HashMap<Hash, Vec<&Path>> = HashMap::new();
     for file_paths in candidates.values() {
         for file_path in file_paths {
             eprintln!("Processing {}", file_path.display());
@@ -79,17 +77,26 @@ mod tests {
 
     /// Sorts each group and then the outer list, so results can be
     /// compared without depending on HashMap iteration order.
-    fn normalize_groups(groups: Vec<Vec<&PathBuf>>) -> Vec<Vec<PathBuf>> {
-        let mut owned: Vec<Vec<PathBuf>> = groups
-            .into_iter()
-            .map(|g| {
-                let mut v: Vec<PathBuf> = g.into_iter().cloned().collect();
-                v.sort();
-                v
-            })
-            .collect();
-        owned.sort();
-        owned
+    fn normalize_groups(groups: Vec<Vec<&Path>>) -> Vec<Vec<&Path>> {
+        // let mut owned: Vec<Vec<PathBuf>> = groups
+        //     .into_iter()
+        //     .map(|g| {
+        //         let mut v: Vec<PathBuf> = g.into_iter().cloned().collect();
+        //         v.sort();
+        //         v
+        //     })
+        //     .collect();
+        // owned.sort();
+        // owned
+        let mut groups = groups;
+
+        for group in &mut groups {
+            group.sort();
+        }
+
+        groups.sort();
+
+        groups
     }
 
     // ====================================================================
@@ -269,7 +276,7 @@ mod tests {
 
     #[test]
     fn empty_candidates_returns_empty_duplicates() {
-        let candidates: HashMap<Fingerprint, Vec<&PathBuf>> = HashMap::new();
+        let candidates: HashMap<Fingerprint, Vec<&Path>> = HashMap::new();
         let result = find_duplicates(&candidates).unwrap();
         assert!(result.is_empty());
     }
@@ -279,7 +286,7 @@ mod tests {
         let dir = tempdir().unwrap();
         let path = write_file(dir.path(), "solo.bin", b"only one");
         let fp = fingerprint_file(&path).unwrap();
-        let mut candidates: HashMap<Fingerprint, Vec<&PathBuf>> = HashMap::new();
+        let mut candidates: HashMap<Fingerprint, Vec<&Path>> = HashMap::new();
         candidates.insert(fp, vec![&path]);
 
         let result = find_duplicates(&candidates).unwrap();
@@ -293,7 +300,7 @@ mod tests {
         let a = write_file(dir.path(), "a.bin", &content);
         let b = write_file(dir.path(), "b.bin", &content);
         let fp = fingerprint_file(&a).unwrap();
-        let mut candidates: HashMap<Fingerprint, Vec<&PathBuf>> = HashMap::new();
+        let mut candidates: HashMap<Fingerprint, Vec<&Path>> = HashMap::new();
         candidates.insert(fp, vec![&a, &b]);
 
         let result = find_duplicates(&candidates).unwrap();
@@ -309,7 +316,7 @@ mod tests {
         let b = write_file(dir.path(), "b.bin", &content);
         let c = write_file(dir.path(), "c.bin", &content);
         let fp = fingerprint_file(&a).unwrap();
-        let mut candidates: HashMap<Fingerprint, Vec<&PathBuf>> = HashMap::new();
+        let mut candidates: HashMap<Fingerprint, Vec<&Path>> = HashMap::new();
         candidates.insert(fp, vec![&a, &b, &c]);
 
         let result = find_duplicates(&candidates).unwrap();
@@ -329,7 +336,7 @@ mod tests {
 
         let fp_a = fingerprint_file(&a1).unwrap();
         let fp_b = fingerprint_file(&b1).unwrap();
-        let mut candidates: HashMap<Fingerprint, Vec<&PathBuf>> = HashMap::new();
+        let mut candidates: HashMap<Fingerprint, Vec<&Path>> = HashMap::new();
         candidates.insert(fp_a, vec![&a1, &a2]);
         candidates.insert(fp_b, vec![&b1, &b2]);
 
@@ -338,12 +345,12 @@ mod tests {
 
         let mut expected = vec![
             {
-                let mut v = vec![a1, a2];
+                let mut v = vec![&a1, &a2];
                 v.sort();
                 v
             },
             {
-                let mut v = vec![b1, b2];
+                let mut v = vec![&b1, &b2];
                 v.sort();
                 v
             },
@@ -376,7 +383,7 @@ mod tests {
         //     "test setup assumption broken: expected a fingerprint collision here"
         // );
 
-        let mut candidates: HashMap<Fingerprint, Vec<&PathBuf>> = HashMap::new();
+        let mut candidates: HashMap<Fingerprint, Vec<&Path>> = HashMap::new();
         candidates.insert(fp_a, vec![&path_a, &path_b]);
 
         let result = find_duplicates(&candidates).unwrap();
@@ -398,7 +405,7 @@ mod tests {
         let a = write_file(dir.path(), "a.bin", &content);
         let b = write_file(dir.path(), "b.bin", &content);
         let fp = fingerprint_file(&a).unwrap();
-        let mut candidates: HashMap<Fingerprint, Vec<&PathBuf>> = HashMap::new();
+        let mut candidates: HashMap<Fingerprint, Vec<&Path>> = HashMap::new();
         candidates.insert(fp, vec![&a, &b]);
 
         std::fs::remove_file(&a).unwrap();

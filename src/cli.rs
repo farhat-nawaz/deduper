@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 
 #[derive(Parser, Debug)]
 #[command(name = "dedup")]
@@ -9,7 +9,13 @@ pub struct Options {
     /// Root directory to scan
     pub(crate) root_dir: PathBuf,
 
-    /// Don't delete anything; only report duplicates
-    #[arg(long, default_value_t = true)]
-    pub(crate) dry_run: bool,
+    /// whether to actually delete duplicates, or just dry-run
+    #[arg(long, value_enum, default_value_t = Action::DryRun)]
+    pub(crate) delete: Action,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum Action {
+    DryRun,
+    Delete,
 }
