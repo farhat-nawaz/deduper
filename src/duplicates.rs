@@ -1,4 +1,8 @@
-use std::{collections::HashMap, fs, io, path::PathBuf};
+use std::{
+    collections::HashMap,
+    fs, io,
+    path::{Path, PathBuf},
+};
 
 use blake3::{Hash, Hasher};
 
@@ -37,7 +41,7 @@ pub fn find_duplicates<'a>(
 }
 
 // TODO: pass size as well to make sure the file hasn't changed in between
-pub fn hash_file(path: &PathBuf) -> Result<Hash, DedupError> {
+pub fn hash_file(path: &Path) -> Result<Hash, DedupError> {
     let mut hasher = Hasher::new();
     let mut file = fs::File::open(path)?;
     io::copy(&mut file, &mut hasher)?;

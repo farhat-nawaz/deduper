@@ -26,33 +26,55 @@ pub struct Fingerprint {
 }
 
 pub fn fingerprint_file(path: &Path) -> Result<Fingerprint, DedupError> {
-    let metadata = fs::metadata(path)?;
+    let metadata = fs::metadata(path).map_err(|source| DedupError::Metadata {
+        path: path.to_path_buf(),
+        source,
+    })?;
     let size = metadata.len();
 
     // This makes middle chunk centered around the middle of the file
-    let mut file = fs::File::open(path)?;
+    let mut file = fs::File::open(path).map_err(|source| DedupError::Open {
+        path: path.to_path_buf(),
+        source,
+    })?;
     let mut hasher = Hasher::new();
 
     if size >= SAMPLE_SIZE {
         let mut buffer = vec![0; CHUNK_SIZE as usize];
         hasher.update(b"START");
-        file.read_exact(&mut buffer)?;
+        file.read_exact(&mut buffer)
+            .map_err(|source| DedupError::Read {
+                path: path.to_path_buf(),
+                source,
+            })?;
         hasher.update(&buffer);
 
         hasher.update(b"MIDDLE");
         let middle_chunk = (size - CHUNK_SIZE) / 2;
         file.seek(SeekFrom::Start(middle_chunk))?;
-        file.read_exact(&mut buffer)?;
+        file.read_exact(&mut buffer)
+            .map_err(|source| DedupError::Read {
+                path: path.to_path_buf(),
+                source,
+            })?;
         hasher.update(&buffer);
 
         hasher.update(b"END");
         let end_chunk = size - CHUNK_SIZE;
         file.seek(SeekFrom::Start(end_chunk))?;
-        file.read_exact(&mut buffer)?;
+        file.read_exact(&mut buffer)
+            .map_err(|source| DedupError::Read {
+                path: path.to_path_buf(),
+                source,
+            })?;
         hasher.update(&buffer);
     } else {
         let mut buffer = vec![0; size as usize];
-        file.read_exact(&mut buffer)?;
+        file.read_exact(&mut buffer)
+            .map_err(|source| DedupError::Read {
+                path: path.to_path_buf(),
+                source,
+            })?;
         hasher.update(&buffer);
     }
 
@@ -89,10 +111,9 @@ mod tests {
     #[test]
     fn errors_on_nonexistent_path() {
         let path = Path::new("/definitely/does/not/exist/xyz_abc_123.bin");
-        assert!(matches!(
-            fingerprint_file(path),
-            Err(DedupError::FileRead(_))
-        ));
+        assert!(
+            matches!(fingerprint_file(path), Err(DedupError::Metadata { source, .. }) if source.kind() == std::io::ErrorKind::NotFound)
+        );
     }
 
     #[test]
@@ -101,10 +122,9 @@ mod tests {
         // on Windows it usually fails at File::open. Either way the
         // caller should just see FileReadError.
         let dir = tempdir().expect("create temp dir");
-        assert!(matches!(
-            fingerprint_file(dir.path()),
-            Err(DedupError::FileRead(_))
-        ));
+        assert!(
+            matches!(fingerprint_file(dir.path()), Err(DedupError::Read { source, .. }) if source.kind() == std::io::ErrorKind::IsADirectory)
+        );
     }
 
     #[cfg(unix)]
@@ -126,7 +146,9 @@ mod tests {
         // Skip/ignore this assertion if your CI runs tests as root --
         // root bypasses POSIX permission bits, so this would spuriously
         // fail there.
-        assert!(matches!(result, Err(DedupError::FileRead(_))));
+        assert!(
+            matches!(result, Err(DedupError::Open { source, .. }) if source.kind() == std::io::ErrorKind::PermissionDenied)
+        );
     }
 
     // ====================================================================
@@ -139,10 +161,9 @@ mod tests {
         let dir = tempdir().unwrap();
         let link = dir.path().join("broken");
         std::os::unix::fs::symlink("/no/such/target", &link).unwrap();
-        assert!(matches!(
-            fingerprint_file(&link),
-            Err(DedupError::FileRead(_))
-        ));
+        assert!(
+            matches!(fingerprint_file(&link), Err(DedupError::Metadata { source, .. }) if source.kind() == std::io::ErrorKind::NotFound)
+        );
     }
 
     #[cfg(unix)]

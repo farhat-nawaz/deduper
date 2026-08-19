@@ -15,22 +15,24 @@
 //    keep that file
 //    remove the others
 
-use std::path::PathBuf;
-
+mod cli;
 mod dedup;
 mod duplicates;
 mod error;
 mod files;
 mod fingerprint;
 
-pub use error::DedupError;
+use clap::Parser;
 
-fn main() {
-    let root_dir = PathBuf::from("/Users/farhatnawaz/Developer/projects/rust/deduper/test_data/");
-    let files = files::find_files(&root_dir).unwrap();
-    let candidates = duplicates::find_candidates(&files).unwrap();
-    let duplicates = duplicates::find_duplicates(&candidates).unwrap();
-    let files_to_delete = dedup::choose_files_to_delete(&duplicates).unwrap();
-    let _ = dedup::delete_files(files_to_delete);
+fn main() -> anyhow::Result<()> {
+    let options = cli::Options::parse();
+
+    let files = files::find_files(&options.root_dir)?;
+    let candidates = duplicates::find_candidates(&files)?;
+    let duplicates = duplicates::find_duplicates(&candidates)?;
+    let files_to_delete = dedup::choose_files_to_delete(&duplicates)?;
+    dedup::delete_files(files_to_delete)?;
     // dbg!(&duplicates);
+
+    Ok(())
 }
