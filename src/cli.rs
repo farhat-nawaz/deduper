@@ -3,8 +3,7 @@ use std::path::PathBuf;
 use clap::{Parser, ValueEnum};
 
 #[derive(Parser, Debug)]
-#[command(name = "dedup")]
-#[command(about = "Find and remove duplicate files")]
+#[command(name = "dedup", about = "Find and remove duplicate files")]
 pub struct Options {
     /// Root directory to scan
     pub(crate) root_dir: PathBuf,
@@ -12,6 +11,10 @@ pub struct Options {
     /// whether to actually delete duplicates, or just dry-run
     #[arg(long, value_enum, default_value_t = Action::DryRun)]
     pub(crate) action: Action,
+
+    /// which file to keep
+    #[arg(long, value_enum, default_value_t = KeepPolicy::Newest)]
+    pub(crate) keep: KeepPolicy,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -20,6 +23,7 @@ pub enum Action {
     Delete,
 }
 
+#[derive(Debug, Clone, Copy, ValueEnum)]
 pub enum KeepPolicy {
     Newest,
     Oldest,

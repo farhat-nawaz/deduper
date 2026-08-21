@@ -1,12 +1,11 @@
 use std::{
     fs,
     io::{Read, Seek, SeekFrom},
-    path::Path,
 };
 
 use blake3::{Hash, Hasher};
 
-use crate::error::DedupError;
+use crate::{error::DedupError, files::FileInfo};
 
 // chunk of 64kb
 const CHUNK_SIZE: u64 = 64 * 1024;
@@ -25,61 +24,55 @@ pub struct Fingerprint {
     partial_hash: Hash,
 }
 
-pub fn fingerprint_file(path: &Path) -> Result<Fingerprint, DedupError> {
-    let metadata = fs::metadata(path).map_err(|source| DedupError::Metadata {
-        path: path.to_path_buf(),
-        source,
-    })?;
-    let size = metadata.len();
-
+pub fn fingerprint_file(file_info: &FileInfo) -> Result<Fingerprint, DedupError> {
     // This makes middle chunk centered around the middle of the file
-    let mut file = fs::File::open(path).map_err(|source| DedupError::Open {
-        path: path.to_path_buf(),
+    let mut file = fs::File::open(&file_info.path).map_err(|source| DedupError::Open {
+        path: file_info.path.clone(),
         source,
     })?;
     let mut hasher = Hasher::new();
 
-    if size >= SAMPLE_SIZE {
+    if file_info.size >= SAMPLE_SIZE {
         let mut buffer = vec![0; CHUNK_SIZE as usize];
         hasher.update(b"START");
         file.read_exact(&mut buffer)
             .map_err(|source| DedupError::Read {
-                path: path.to_path_buf(),
+                path: file_info.path.clone(),
                 source,
             })?;
         hasher.update(&buffer);
 
         hasher.update(b"MIDDLE");
-        let middle_chunk = (size - CHUNK_SIZE) / 2;
+        let middle_chunk = (file_info.size - CHUNK_SIZE) / 2;
         file.seek(SeekFrom::Start(middle_chunk))?;
         file.read_exact(&mut buffer)
             .map_err(|source| DedupError::Read {
-                path: path.to_path_buf(),
+                path: file_info.path.clone(),
                 source,
             })?;
         hasher.update(&buffer);
 
         hasher.update(b"END");
-        let end_chunk = size - CHUNK_SIZE;
+        let end_chunk = file_info.size - CHUNK_SIZE;
         file.seek(SeekFrom::Start(end_chunk))?;
         file.read_exact(&mut buffer)
             .map_err(|source| DedupError::Read {
-                path: path.to_path_buf(),
+                path: file_info.path.clone(),
                 source,
             })?;
         hasher.update(&buffer);
     } else {
-        let mut buffer = vec![0; size as usize];
+        let mut buffer = vec![0; file_info.size as usize];
         file.read_exact(&mut buffer)
             .map_err(|source| DedupError::Read {
-                path: path.to_path_buf(),
+                path: file_info.path.clone(),
                 source,
             })?;
         hasher.update(&buffer);
     }
 
     Ok(Fingerprint {
-        size,
+        size: file_info.size,
         partial_hash: hasher.finalize(),
     })
 }
@@ -104,26 +97,37 @@ mod tests {
         vec![byte; len]
     }
 
+    impl From<&Path> for FileInfo {
+        fn from(value: &Path) -> Self {
+            FileInfo::try_from(value.to_path_buf()).unwrap()
+        }
+    }
+
     // ====================================================================
     // 1. I/O error paths
     // ====================================================================
 
-    #[test]
-    fn errors_on_nonexistent_path() {
-        let path = Path::new("/definitely/does/not/exist/xyz_abc_123.bin");
-        assert!(
-            matches!(fingerprint_file(path), Err(DedupError::Metadata { source, .. }) if source.kind() == std::io::ErrorKind::NotFound)
-        );
-    }
+    // After the introduction of FileInfo, we cannot construct its object for invalid paths. So for
+    // one, we need to move this test to files.rs to test FileInfo construction instead, and for
+    // another, we can be sure that give a FileInfo object, fingerprinting would work since this is
+    // a legitimate file. There a scenario where file gets deleted after FileInfo construction, but
+    // that's a different invariant to test for.
+    // #[test]
+    // fn errors_on_nonexistent_path() {
+    //     let path: FileInfo = Path::new("/definitely/does/not/exist/xyz_abc_123.bin").into();
+    //     assert!(
+    //         matches!(fingerprint_file(&path), Err(DedupError::Metadata { source, .. }) if source.kind() == std::io::ErrorKind::NotFound)
+    //     );
+    // }
 
     #[test]
     fn errors_on_directory_path() {
         // On Unix this typically fails inside read_exact (EISDIR);
         // on Windows it usually fails at File::open. Either way the
         // caller should just see FileReadError.
-        let dir = tempdir().expect("create temp dir");
+        let dir = tempdir().expect("create temp dir").into_path();
         assert!(
-            matches!(fingerprint_file(dir.path()), Err(DedupError::Read { source, .. }) if source.kind() == std::io::ErrorKind::IsADirectory)
+            matches!(fingerprint_file(&dir.as_path().into()), Err(DedupError::Read { source, .. }) if source.kind() == std::io::ErrorKind::IsADirectory)
         );
     }
 
@@ -132,11 +136,12 @@ mod tests {
     fn errors_on_unreadable_file() {
         use std::os::unix::fs::PermissionsExt;
         let file = file_with(b"top secret");
-        let mut perms = std::fs::metadata(file.path()).unwrap().permissions();
+        let file_info: FileInfo = file.path().into();
+        let mut perms = std::fs::metadata(&file_info.path).unwrap().permissions();
         perms.set_mode(0o000);
         std::fs::set_permissions(file.path(), perms).unwrap();
 
-        let result = fingerprint_file(file.path());
+        let result = fingerprint_file(&file_info);
 
         // Restore permissions so the tempfile Drop impl can clean up.
         let mut perms = std::fs::metadata(file.path()).unwrap().permissions();
@@ -155,16 +160,22 @@ mod tests {
     // 2. Symlinks
     // ====================================================================
 
-    #[cfg(unix)]
-    #[test]
-    fn errors_on_broken_symlink() {
-        let dir = tempdir().unwrap();
-        let link = dir.path().join("broken");
-        std::os::unix::fs::symlink("/no/such/target", &link).unwrap();
-        assert!(
-            matches!(fingerprint_file(&link), Err(DedupError::Metadata { source, .. }) if source.kind() == std::io::ErrorKind::NotFound)
-        );
-    }
+    // After the introduction of FileInfo, we cannot construct its object for invalid paths. So for
+    // one, we need to move this tests to files.rs to test FileInfo construction instead, and for
+    // another, we can be sure that give a FileInfo object, fingerprinting would work since this is
+    // a legitimate file. There a scenario where file gets deleted after FileInfo construction, but
+    // that's a different invariant to test for.
+
+    // #[cfg(unix)]
+    // #[test]
+    // fn errors_on_broken_symlink() {
+    //     let dir = tempdir().unwrap();
+    //     let link = dir.path().join("broken");
+    //     std::os::unix::fs::symlink("/no/such/target", &link).unwrap();
+    //     assert!(
+    //         matches!(fingerprint_file(&link.as_path().into()), Err(DedupError::Metadata { source, .. }) if source.kind() == std::io::ErrorKind::NotFound)
+    //     );
+    // }
 
     #[cfg(unix)]
     #[test]
@@ -174,8 +185,8 @@ mod tests {
         let link = dir.path().join("good_link");
         std::os::unix::fs::symlink(target.path(), &link).unwrap();
 
-        let direct = fingerprint_file(target.path()).unwrap();
-        let via_link = fingerprint_file(&link).unwrap();
+        let direct = fingerprint_file(&target.path().into()).unwrap();
+        let via_link = fingerprint_file(&link.as_path().into()).unwrap();
         assert_eq!(direct.size, via_link.size);
         assert_eq!(direct.partial_hash, via_link.partial_hash);
     }
@@ -191,7 +202,7 @@ mod tests {
         let mut f = std::fs::File::create(&path).unwrap();
         f.write_all(b"unicode path test").unwrap();
         f.flush().unwrap();
-        assert!(fingerprint_file(&path).is_ok());
+        assert!(fingerprint_file(&path.as_path().into()).is_ok());
     }
 
     // #[cfg(unix)]
@@ -219,14 +230,14 @@ mod tests {
     #[test]
     fn empty_file_succeeds_with_size_zero() {
         let file = file_with(b"");
-        let result = fingerprint_file(file.path()).expect("empty file should not error");
+        let result = fingerprint_file(&file.path().into()).expect("empty file should not error");
         assert_eq!(result.size, 0);
     }
 
     #[test]
     fn single_byte_file_succeeds() {
         let file = file_with(&[0x7F]);
-        let result = fingerprint_file(file.path()).expect("1-byte file should not error");
+        let result = fingerprint_file(&file.path().into()).expect("1-byte file should not error");
         assert_eq!(result.size, 1);
     }
 
@@ -238,7 +249,7 @@ mod tests {
     fn just_below_threshold_takes_whole_file_branch() {
         let bytes = pattern(0xAB, SAMPLE_SIZE as usize - 1);
         let file = file_with(&bytes);
-        assert!(fingerprint_file(file.path()).is_ok());
+        assert!(fingerprint_file(&file.path().into()).is_ok());
     }
 
     #[test]
@@ -248,14 +259,14 @@ mod tests {
         // regression guard against that ever underflowing.
         let bytes = pattern(0xCD, SAMPLE_SIZE as usize);
         let file = file_with(&bytes);
-        assert!(fingerprint_file(file.path()).is_ok());
+        assert!(fingerprint_file(&file.path().into()).is_ok());
     }
 
     #[test]
     fn one_byte_above_threshold_does_not_panic() {
         let bytes = pattern(0xEF, SAMPLE_SIZE as usize + 1);
         let file = file_with(&bytes);
-        assert!(fingerprint_file(file.path()).is_ok());
+        assert!(fingerprint_file(&file.path().into()).is_ok());
     }
 
     #[test]
@@ -265,8 +276,8 @@ mod tests {
         let f_below = file_with(&below);
         let f_at = file_with(&at);
 
-        let r_below = fingerprint_file(f_below.path()).unwrap();
-        let r_at = fingerprint_file(f_at.path()).unwrap();
+        let r_below = fingerprint_file(&f_below.path().into()).unwrap();
+        let r_at = fingerprint_file(&f_at.path().into()).unwrap();
 
         assert_ne!(r_below.size, r_at.size);
         assert_ne!(r_below.partial_hash, r_at.partial_hash);
@@ -293,8 +304,8 @@ mod tests {
         let bytes = pattern(0x42, 500 * 1024);
         let a = file_with(&bytes);
         let b = file_with(&bytes);
-        let ra = fingerprint_file(a.path()).unwrap();
-        let rb = fingerprint_file(b.path()).unwrap();
+        let ra = fingerprint_file(&a.path().into()).unwrap();
+        let rb = fingerprint_file(&b.path().into()).unwrap();
         assert_eq!(ra.size, rb.size);
         assert_eq!(ra.partial_hash, rb.partial_hash);
     }
@@ -303,8 +314,8 @@ mod tests {
     fn repeated_calls_are_deterministic() {
         let bytes = pattern(0x99, 10 * 1024);
         let file = file_with(&bytes);
-        let r1 = fingerprint_file(file.path()).unwrap();
-        let r2 = fingerprint_file(file.path()).unwrap();
+        let r1 = fingerprint_file(&file.path().into()).unwrap();
+        let r2 = fingerprint_file(&file.path().into()).unwrap();
         assert_eq!(r1.partial_hash, r2.partial_hash);
     }
 
@@ -319,8 +330,8 @@ mod tests {
 
         let fa = file_with(&a);
         let fb = file_with(&b);
-        let ra = fingerprint_file(fa.path()).unwrap();
-        let rb = fingerprint_file(fb.path()).unwrap();
+        let ra = fingerprint_file(&fa.path().into()).unwrap();
+        let rb = fingerprint_file(&fb.path().into()).unwrap();
 
         assert_eq!(ra.size, rb.size);
         assert_ne!(ra.partial_hash, rb.partial_hash);
@@ -335,8 +346,8 @@ mod tests {
         let fa = file_with(&a);
         let fb = file_with(&b);
         assert_ne!(
-            fingerprint_file(fa.path()).unwrap().partial_hash,
-            fingerprint_file(fb.path()).unwrap().partial_hash
+            fingerprint_file(&fa.path().into()).unwrap().partial_hash,
+            fingerprint_file(&fb.path().into()).unwrap().partial_hash
         );
     }
 
@@ -350,8 +361,8 @@ mod tests {
         let fa = file_with(&a);
         let fb = file_with(&b);
         assert_ne!(
-            fingerprint_file(fa.path()).unwrap().partial_hash,
-            fingerprint_file(fb.path()).unwrap().partial_hash
+            fingerprint_file(&fa.path().into()).unwrap().partial_hash,
+            fingerprint_file(&fb.path().into()).unwrap().partial_hash
         );
     }
 
@@ -364,8 +375,8 @@ mod tests {
         let fa = file_with(&a);
         let fb = file_with(&b);
         assert_ne!(
-            fingerprint_file(fa.path()).unwrap().partial_hash,
-            fingerprint_file(fb.path()).unwrap().partial_hash
+            fingerprint_file(&fa.path().into()).unwrap().partial_hash,
+            fingerprint_file(&fb.path().into()).unwrap().partial_hash
         );
     }
 
@@ -389,8 +400,8 @@ mod tests {
 
         let fa = file_with(&a);
         let fb = file_with(&b);
-        let ra = fingerprint_file(fa.path()).unwrap();
-        let rb = fingerprint_file(fb.path()).unwrap();
+        let ra = fingerprint_file(&fa.path().into()).unwrap();
+        let rb = fingerprint_file(&fb.path().into()).unwrap();
 
         assert_eq!(ra.size, rb.size);
         assert_eq!(
@@ -419,8 +430,8 @@ mod tests {
         let fa = file_with(&a);
         let fb = file_with(&b);
         assert_ne!(
-            fingerprint_file(fa.path()).unwrap().partial_hash,
-            fingerprint_file(fb.path()).unwrap().partial_hash
+            fingerprint_file(&fa.path().into()).unwrap().partial_hash,
+            fingerprint_file(&fb.path().into()).unwrap().partial_hash
         );
     }
 
@@ -434,7 +445,7 @@ mod tests {
         let file = file_with(&bytes);
         let before = std::fs::read(file.path()).unwrap();
 
-        let _ = fingerprint_file(file.path()).unwrap();
+        let _ = fingerprint_file(&file.path().into()).unwrap();
 
         let after = std::fs::read(file.path()).unwrap();
         assert_eq!(
@@ -452,7 +463,7 @@ mod tests {
     fn multi_gigabyte_sparse_file_does_not_panic() {
         let file = NamedTempFile::new().unwrap();
         file.as_file().set_len(4 * 1024 * 1024 * 1024).unwrap(); // 4 GiB, sparse
-        assert!(fingerprint_file(file.path()).is_ok());
+        assert!(fingerprint_file(&file.path().into()).is_ok());
     }
 
     // ====================================================================
@@ -481,7 +492,7 @@ mod tests {
                 }
             });
 
-            let outcome = fingerprint_file(&path);
+            let outcome = fingerprint_file(&path.as_path().into());
             writer.join().unwrap();
 
             assert!(matches!(outcome, Ok(_) | Err(DedupError::FileRead(_))));
