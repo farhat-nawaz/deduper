@@ -1,4 +1,9 @@
-use std::{collections::HashMap, fs, io, path::Path};
+use std::{
+    collections::HashMap,
+    fs,
+    io::{self, Write},
+    path::Path,
+};
 
 use blake3::{Hash, Hasher};
 
@@ -31,12 +36,13 @@ pub fn find_candidates(files: &[FileInfo]) -> Result<Vec<CandidateGroup<'_>>, De
 }
 
 pub fn find_duplicates<'a>(
-    candidates: &'a Vec<CandidateGroup>,
+    candidates: &[CandidateGroup<'a>],
 ) -> Result<Vec<DuplicateGroup<'a>>, DedupError> {
     let mut duplicates: HashMap<Hash, Vec<&FileInfo>> = HashMap::new();
     for candidate_group in candidates {
         for file in &*candidate_group.files {
-            eprintln!("Processing {}", file.path.display());
+            print!("\r\x1b[2KProcessing: {}", file.path.display());
+            std::io::stdout().flush().unwrap();
 
             let hash = hash_file(&file.path)?;
             duplicates.entry(hash).or_default().push(file);

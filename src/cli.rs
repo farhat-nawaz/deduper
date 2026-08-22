@@ -9,8 +9,8 @@ pub struct Options {
     pub(crate) root_dir: PathBuf,
 
     /// whether to actually delete duplicates, or just dry-run
-    #[arg(long, value_enum, default_value_t = Action::DryRun)]
-    pub(crate) action: Action,
+    #[arg(long)]
+    pub(crate) delete: bool,
 
     /// which file to keep
     #[arg(long, value_enum, default_value_t = KeepPolicy::Newest)]
