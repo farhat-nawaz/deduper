@@ -6,26 +6,36 @@ use crate::error::DedupError;
 use crate::files::FileInfo;
 use crate::fingerprint::{Fingerprint, fingerprint_file};
 
-pub fn find_candidates(
-    files: &[FileInfo],
-) -> Result<HashMap<Fingerprint, Vec<&FileInfo>>, DedupError> {
+pub(crate) struct CandidateGroup<'a> {
+    files: Vec<&'a FileInfo>,
+    fingerprint: Fingerprint,
+}
+
+pub(crate) struct DuplicateGroup<'a> {
+    pub(crate) files: Vec<&'a FileInfo>,
+}
+
+pub fn find_candidates(files: &[FileInfo]) -> Result<Vec<CandidateGroup<'_>>, DedupError> {
     let mut fingerprints: HashMap<Fingerprint, Vec<&FileInfo>> = HashMap::new();
 
     for file in files {
-        let fingerprint = fingerprint_file(&file)?;
+        let fingerprint = fingerprint_file(file)?;
         fingerprints.entry(fingerprint).or_default().push(file);
     }
 
     fingerprints.retain(|_, paths| paths.len() > 1);
-    Ok(fingerprints)
+    Ok(fingerprints
+        .into_iter()
+        .map(|(fingerprint, files)| CandidateGroup { files, fingerprint })
+        .collect())
 }
 
 pub fn find_duplicates<'a>(
-    candidates: &HashMap<Fingerprint, Vec<&'a FileInfo>>,
-) -> Result<Vec<Vec<&'a FileInfo>>, DedupError> {
+    candidates: &'a Vec<CandidateGroup>,
+) -> Result<Vec<DuplicateGroup<'a>>, DedupError> {
     let mut duplicates: HashMap<Hash, Vec<&FileInfo>> = HashMap::new();
-    for files in candidates.values() {
-        for file in files {
+    for candidate_group in candidates {
+        for file in &*candidate_group.files {
             eprintln!("Processing {}", file.path.display());
 
             let hash = hash_file(&file.path)?;
@@ -34,7 +44,10 @@ pub fn find_duplicates<'a>(
     }
     duplicates.retain(|_, paths| paths.len() > 1);
 
-    Ok(duplicates.into_values().collect())
+    Ok(duplicates
+        .into_values()
+        .map(|files| DuplicateGroup { files })
+        .collect())
 }
 
 // TODO: pass size as well to make sure the file hasn't changed in between
@@ -46,16 +59,9 @@ pub fn hash_file(path: &Path) -> Result<Hash, DedupError> {
     Ok(hasher.finalize())
 }
 
-struct DuplicateGroup<'a> {
-    files: Vec<FileInfo>,
-    keeper: &'a Path,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashMap;
-    use std::os::unix::fs::MetadataExt;
     use std::path::{Path, PathBuf};
     use tempfile::tempdir;
 
@@ -214,8 +220,12 @@ mod tests {
         let result = find_candidates(&files).unwrap();
 
         assert_eq!(result.len(), 1);
-        let group = result.values().next().unwrap();
-        let mut names: Vec<_> = group.iter().map(|p| p.path.file_name().unwrap()).collect();
+        let group = result.iter().next().unwrap();
+        let mut names: Vec<_> = group
+            .files
+            .iter()
+            .map(|p| p.path.file_name().unwrap())
+            .collect();
         names.sort();
         let mut expected = vec![a.path.file_name().unwrap(), b.path.file_name().unwrap()];
         expected.sort();
@@ -232,7 +242,7 @@ mod tests {
 
         let result = find_candidates(&files).unwrap();
         assert_eq!(result.len(), 1);
-        assert_eq!(result.values().next().unwrap().len(), 5);
+        assert_eq!(result.iter().next().unwrap().files.len(), 5);
     }
 
     #[test]
@@ -248,8 +258,8 @@ mod tests {
 
         let result = find_candidates(&files).unwrap();
         assert_eq!(result.len(), 2);
-        for group in result.values() {
-            assert_eq!(group.len(), 2);
+        for group in result {
+            assert_eq!(group.files.len(), 2);
         }
     }
 
@@ -265,7 +275,7 @@ mod tests {
 
         let result = find_candidates(&files).unwrap();
         assert_eq!(result.len(), 1);
-        assert_eq!(result.values().next().unwrap().len(), 2);
+        assert_eq!(result.iter().next().unwrap().files.len(), 2);
     }
 
     #[test]
@@ -286,7 +296,7 @@ mod tests {
 
     #[test]
     fn empty_candidates_returns_empty_duplicates() {
-        let candidates: HashMap<Fingerprint, Vec<&FileInfo>> = HashMap::new();
+        let candidates: Vec<CandidateGroup> = Vec::new();
         let result = find_duplicates(&candidates).unwrap();
         assert!(result.is_empty());
     }
@@ -296,8 +306,11 @@ mod tests {
         let dir = tempdir().unwrap();
         let file_info = write_file(dir.path(), "solo.bin", b"only one");
         let fp = fingerprint_file(&file_info).unwrap();
-        let mut candidates: HashMap<Fingerprint, Vec<&FileInfo>> = HashMap::new();
-        candidates.insert(fp, vec![&file_info]);
+        let mut candidates: Vec<CandidateGroup> = Vec::new();
+        candidates.push(CandidateGroup {
+            files: vec![&file_info],
+            fingerprint: fp,
+        });
 
         let result = find_duplicates(&candidates).unwrap();
         assert!(result.is_empty());
@@ -310,12 +323,15 @@ mod tests {
         let a = write_file(dir.path(), "a.bin", &content);
         let b = write_file(dir.path(), "b.bin", &content);
         let fp = fingerprint_file(&a).unwrap();
-        let mut candidates: HashMap<Fingerprint, Vec<&FileInfo>> = HashMap::new();
-        candidates.insert(fp, vec![&a, &b]);
+        let mut candidates: Vec<CandidateGroup> = Vec::new();
+        candidates.push(CandidateGroup {
+            files: vec![&a, &b],
+            fingerprint: fp,
+        });
 
         let result = find_duplicates(&candidates).unwrap();
         assert_eq!(result.len(), 1);
-        assert_eq!(result[0].len(), 2);
+        assert_eq!(result[0].files.len(), 2);
     }
 
     #[test]
@@ -326,12 +342,15 @@ mod tests {
         let b = write_file(dir.path(), "b.bin", &content);
         let c = write_file(dir.path(), "c.bin", &content);
         let fp = fingerprint_file(&a).unwrap();
-        let mut candidates: HashMap<Fingerprint, Vec<&FileInfo>> = HashMap::new();
-        candidates.insert(fp, vec![&a, &b, &c]);
+        let mut candidates: Vec<CandidateGroup> = Vec::new();
+        candidates.push(CandidateGroup {
+            files: vec![&a, &b, &c],
+            fingerprint: fp,
+        });
 
         let result = find_duplicates(&candidates).unwrap();
         assert_eq!(result.len(), 1);
-        assert_eq!(result[0].len(), 3);
+        assert_eq!(result[0].files.len(), 3);
     }
 
     #[test]
@@ -346,12 +365,23 @@ mod tests {
 
         let fp_a = fingerprint_file(&a1).unwrap();
         let fp_b = fingerprint_file(&b1).unwrap();
-        let mut candidates: HashMap<Fingerprint, Vec<&FileInfo>> = HashMap::new();
-        candidates.insert(fp_a, vec![&a1, &a2]);
-        candidates.insert(fp_b, vec![&b1, &b2]);
+        let mut candidates: Vec<CandidateGroup> = Vec::new();
+        candidates.push(CandidateGroup {
+            files: vec![&a1, &a2],
+            fingerprint: fp_a,
+        });
+        candidates.push(CandidateGroup {
+            files: vec![&b1, &b2],
+            fingerprint: fp_b,
+        });
 
         let result = find_duplicates(&candidates).unwrap();
-        let normalized = normalize_groups(result);
+        let normalized = normalize_groups(
+            result
+                .iter()
+                .map(|group| group.files.iter().copied().collect())
+                .collect(),
+        );
         let expected = normalize_groups(vec![vec![&a1, &a2], vec![&b1, &b2]]);
 
         assert_eq!(normalized, expected);
@@ -374,14 +404,17 @@ mod tests {
         let path_b = write_file(dir.path(), "b.bin", &b);
 
         let fp_a = fingerprint_file(&path_a).unwrap();
-        let fp_b = fingerprint_file(&path_b).unwrap();
+        // let fp_b = fingerprint_file(&path_b).unwrap();
         // assert_eq!(
         //     fp_a.partial_hash, fp_b.partial_hash,
         //     "test setup assumption broken: expected a fingerprint collision here"
         // );
 
-        let mut candidates: HashMap<Fingerprint, Vec<&FileInfo>> = HashMap::new();
-        candidates.insert(fp_a, vec![&path_a, &path_b]);
+        let mut candidates: Vec<CandidateGroup> = Vec::new();
+        candidates.push(CandidateGroup {
+            files: vec![&path_a, &path_b],
+            fingerprint: fp_a,
+        });
 
         let result = find_duplicates(&candidates).unwrap();
         assert!(
@@ -402,8 +435,11 @@ mod tests {
         let a = write_file(dir.path(), "a.bin", &content);
         let b = write_file(dir.path(), "b.bin", &content);
         let fp = fingerprint_file(&a).unwrap();
-        let mut candidates: HashMap<Fingerprint, Vec<&FileInfo>> = HashMap::new();
-        candidates.insert(fp, vec![&a, &b]);
+        let mut candidates: Vec<CandidateGroup> = Vec::new();
+        candidates.push(CandidateGroup {
+            files: vec![&a, &b],
+            fingerprint: fp,
+        });
 
         std::fs::remove_file(&a.path).unwrap();
 
@@ -427,7 +463,7 @@ mod tests {
         let duplicates = find_duplicates(&candidates).unwrap();
 
         assert_eq!(duplicates.len(), 1);
-        assert_eq!(duplicates[0].len(), 2);
+        assert_eq!(duplicates[0].files.len(), 2);
     }
 
     #[test]
@@ -495,7 +531,12 @@ mod tests {
 
         let candidates = find_candidates(&files).unwrap();
         let duplicates = find_duplicates(&candidates).unwrap();
-        let normalized = normalize_groups(duplicates);
+        let normalized = normalize_groups(
+            duplicates
+                .iter()
+                .map(|group| group.files.iter().copied().collect())
+                .collect(),
+        );
         let expected = normalize_groups(vec![vec![&small_a, &small_b], vec![&large_a, &large_b]]);
 
         assert_eq!(normalized, expected);

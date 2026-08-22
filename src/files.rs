@@ -1,5 +1,4 @@
 use std::{
-    os::unix::fs::MetadataExt,
     path::{Path, PathBuf},
     time::SystemTime,
 };
@@ -33,7 +32,7 @@ impl TryFrom<PathBuf> for FileInfo {
         let metadata = std::fs::metadata(&value)?;
         Ok(FileInfo {
             path: value,
-            size: metadata.size(),
+            size: metadata.len(),
             modified: metadata.modified()?,
         })
     }
