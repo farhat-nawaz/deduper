@@ -4,8 +4,6 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum DedupError {
-    #[error("failed to read file")]
-    FileRead(#[from] std::io::Error),
     #[error("failed to open file `{path}`")]
     Open {
         path: PathBuf,
@@ -24,4 +22,12 @@ pub enum DedupError {
         #[source]
         source: std::io::Error,
     },
+    #[error("failed to read directory `{path}`")]
+    WalkDir {
+        path: PathBuf,
+        #[source]
+        source: walkdir::Error,
+    },
+    #[error("failed to read file")]
+    FileRead(#[from] std::io::Error),
 }

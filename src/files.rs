@@ -3,20 +3,28 @@ use std::{
     time::SystemTime,
 };
 
-use walkdir::{DirEntry, WalkDir};
+use walkdir::WalkDir;
 
 use crate::error::DedupError;
 
 pub fn find_files(root: &Path) -> Result<Vec<FileInfo>, DedupError> {
-    WalkDir::new(root)
-        .into_iter()
-        .filter_map(Result::ok)
-        .filter(|entry| entry.file_type().is_file())
-        .map(DirEntry::into_path)
-        .map(FileInfo::try_from)
-        .collect()
+    let mut files = Vec::new();
 
-    // Ok(files)
+    for entry in WalkDir::new(root) {
+        let entry = entry.map_err(|source| DedupError::WalkDir {
+            path: source
+                .path()
+                .map(Path::to_path_buf)
+                .unwrap_or_else(|| root.to_path_buf()),
+            source,
+        })?;
+
+        if entry.file_type().is_file() {
+            files.push(FileInfo::try_from(entry.into_path())?);
+        }
+    }
+
+    Ok(files)
 }
 
 #[derive(Debug, Ord, PartialEq, PartialOrd, Eq)]
