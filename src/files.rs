@@ -7,7 +7,7 @@ use walkdir::WalkDir;
 
 use crate::error::DedupError;
 
-pub fn find_files(root: &Path) -> Result<Vec<FileInfo>, DedupError> {
+pub fn find_files(root: &Path, exclude: &[String]) -> Result<Vec<FileInfo>, DedupError> {
     let mut files = Vec::new();
 
     for entry in WalkDir::new(root) {
@@ -19,9 +19,19 @@ pub fn find_files(root: &Path) -> Result<Vec<FileInfo>, DedupError> {
             source,
         })?;
 
-        if entry.file_type().is_file() {
-            files.push(FileInfo::try_from(entry.into_path())?);
+        if !entry.file_type().is_file() {
+            continue;
         }
+
+        if entry
+            .path()
+            .extension()
+            .is_some_and(|ext| exclude.contains(&ext.to_string_lossy().to_lowercase()))
+        {
+            continue;
+        }
+
+        files.push(FileInfo::try_from(entry.into_path())?);
     }
 
     Ok(files)

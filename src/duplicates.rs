@@ -41,6 +41,7 @@ pub fn find_duplicates<'a>(
     let mut duplicates: HashMap<Hash, Vec<&FileInfo>> = HashMap::new();
     for candidate_group in candidates {
         for file in &*candidate_group.files {
+            // TODO: this is to be removed. only here for dev purposes
             print!("\r\x1b[2KProcessing: {}", file.path.display());
             std::io::stdout().flush().unwrap();
 

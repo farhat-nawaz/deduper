@@ -15,6 +15,9 @@ pub struct Options {
     /// which file to keep
     #[arg(long, value_enum, default_value_t = KeepPolicy::Newest)]
     pub(crate) keep: KeepPolicy,
+
+    #[arg(long, value_delimiter = ',')]
+    pub(crate) exclude: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]

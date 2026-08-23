@@ -19,7 +19,7 @@ struct DeletionPlan<'a> {
 }
 
 pub fn run(options: Options) -> Result<(), DedupError> {
-    let files = find_files(&options.root_dir)?;
+    let files = find_files(&options.root_dir, &options.exclude)?;
     let candidates = find_candidates(&files)?;
     let duplicates = find_duplicates(&candidates)?;
     let deletion_plan = plan_deletion(&duplicates, options.keep);
@@ -62,11 +62,11 @@ fn report_stats(plan: &DeletionPlan) {
     println!("SUMMARY:");
     println!("  Duplicate Groups:  {}", plan.groups.len());
     println!("  Files to delete:   {}", total_deletable_files);
-    println!("  Space Reclaimable: {}", format_size(reclaimable_bytes));
+    println!("  Reclaimable Space: {}", format_size(reclaimable_bytes));
 }
 
 fn format_size(bytes: u64) -> String {
-    const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB"];
+    const UNITS: &[&str] = &["B", "KiB", "MiB", "GiB", "TiB"];
 
     let mut size = bytes as f64;
     let mut unit = 0;
