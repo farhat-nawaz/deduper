@@ -1,4 +1,4 @@
-use crate::cli::{Action, KeepPolicy, Options};
+use crate::cli::{KeepPolicy, Options};
 use crate::duplicates::{DuplicateGroup, find_candidates, find_duplicates};
 use crate::error::DedupError;
 use crate::files::{FileInfo, find_files};
@@ -19,7 +19,9 @@ struct DeletionPlan<'a> {
 }
 
 pub fn run(options: Options) -> Result<(), DedupError> {
-    let files = find_files(&options.root_dir, &options.exclude)?;
+    dbg!(&options);
+    let files = find_files(&options.root_dir, (&options).into())?;
+
     let candidates = find_candidates(&files)?;
     let duplicates = find_duplicates(&candidates)?;
     let deletion_plan = plan_deletion(&duplicates, options.keep);
