@@ -5,7 +5,10 @@ use std::{
 
 use walkdir::{DirEntry, WalkDir};
 
-use crate::{cli::Options, error::DedupError};
+use crate::{
+    cli::{FileSize, Options},
+    error::DedupError,
+};
 
 pub fn find_files(root: &Path, criteria: FileFilter) -> Result<Vec<FileInfo>, DedupError> {
     WalkDir::new(root)
@@ -53,6 +56,25 @@ fn should_keep(entry: &DirEntry, criteria: &FileFilter) -> bool {
         return false;
     }
 
+    // TODO: handle error case properly to maybe terminate scanning
+    let Ok(metadata) = entry.metadata() else {
+        return false;
+    };
+
+    if criteria
+        .max_file_size
+        .is_some_and(|max| metadata.len() > max.bytes())
+    {
+        return false;
+    }
+
+    if criteria
+        .min_file_size
+        .is_some_and(|min| metadata.len() < min.bytes())
+    {
+        return false;
+    }
+
     !path.extension().is_none_or(|ext| {
         criteria
             .exclude_extensions
@@ -70,6 +92,8 @@ pub(crate) struct FileFilter {
     exclude_extensions: Vec<String>,
     exclude_dirs: Vec<String>,
     include_hidden_files: bool,
+    max_file_size: Option<FileSize>,
+    min_file_size: Option<FileSize>,
 }
 
 impl From<&Options> for FileFilter {
@@ -78,6 +102,8 @@ impl From<&Options> for FileFilter {
             exclude_extensions: value.exclude_ext.clone(),
             exclude_dirs: value.exclude_dir.clone(),
             include_hidden_files: value.include_hidden_files,
+            max_file_size: value.max_file_size,
+            min_file_size: value.min_file_size,
         }
     }
 }

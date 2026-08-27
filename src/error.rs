@@ -28,6 +28,8 @@ pub enum DedupError {
         #[source]
         source: walkdir::Error,
     },
+    #[error("{message}")]
+    InvalidArgument { message: String },
     #[error("failed to read file")]
     FileRead(#[from] std::io::Error),
 }

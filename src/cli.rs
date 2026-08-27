@@ -1,6 +1,8 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, str::FromStr};
 
 use clap::{Parser, ValueEnum};
+
+use crate::error::DedupError;
 
 #[derive(Parser, Debug)]
 #[command(name = "dedup", about = "Find and remove duplicate files")]
@@ -27,8 +29,14 @@ pub struct Options {
     /// Comma separated list of directories to be ignored
     #[arg(long, value_delimiter = ',')]
     pub(crate) exclude_dir: Vec<String>,
-    // #[arg(long, value_delimiter = ',')]
-    // pub(crate) min_size: u64,
+
+    /// Files with size greater than this will be ignored
+    #[arg(long)]
+    pub(crate) max_file_size: Option<FileSize>,
+
+    /// Files with size less than this will be ignored
+    #[arg(long)]
+    pub(crate) min_file_size: Option<FileSize>,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -41,4 +49,39 @@ pub enum Action {
 pub enum KeepPolicy {
     Newest,
     Oldest,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct FileSize(u64);
+
+impl FileSize {
+    pub(crate) fn bytes(&self) -> u64 {
+        self.0
+    }
+}
+
+impl FromStr for FileSize {
+    type Err = DedupError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let s = s.trim();
+        let error = || DedupError::InvalidArgument {
+            message: format!("Invalid file size: {}", s),
+        };
+        let position = s.find(|c: char| !c.is_ascii_digit()).ok_or_else(error)?;
+
+        let (number, unit) = s.split_at(position);
+        let number: u64 = number.parse().map_err(|_| error())?;
+
+        let multiplier = match unit.to_ascii_lowercase().as_str() {
+            "b" => 1,
+            "kb" => 1_000,
+            "mb" => 1_000_000,
+            "gb" => 1_000_000_000,
+            _ => return Err(error()),
+        };
+
+        Ok(FileSize(
+            number.checked_mul(multiplier).ok_or_else(|| error())?,
+        ))
+    }
 }
