@@ -1,4 +1,5 @@
 use std::{
+    os::unix::fs::MetadataExt,
     path::{Path, PathBuf},
     time::SystemTime,
 };
@@ -13,7 +14,7 @@ use crate::{
 pub fn find_files(root: &Path, criteria: FileFilter) -> Result<Vec<FileInfo>, DedupError> {
     WalkDir::new(root)
         .into_iter()
-        .filter_entry(|entry| should_descend(&entry, &criteria))
+        .filter_entry(|entry| should_descend(entry, &criteria))
         .filter(|entry| match entry {
             Ok(entry) => should_keep(entry, &criteria),
             Err(_) => true,
@@ -88,19 +89,19 @@ fn is_hidden(path: &Path) -> bool {
         .is_some_and(|name| name.starts_with('.'))
 }
 
-pub(crate) struct FileFilter {
-    exclude_extensions: Vec<String>,
-    exclude_dirs: Vec<String>,
+pub(crate) struct FileFilter<'a> {
+    exclude_extensions: &'a [String],
+    exclude_dirs: &'a [String],
     include_hidden_files: bool,
     max_file_size: Option<FileSize>,
     min_file_size: Option<FileSize>,
 }
 
-impl From<&Options> for FileFilter {
-    fn from(value: &Options) -> Self {
+impl<'a> From<&'a Options> for FileFilter<'a> {
+    fn from(value: &'a Options) -> Self {
         Self {
-            exclude_extensions: value.exclude_ext.clone(),
-            exclude_dirs: value.exclude_dir.clone(),
+            exclude_extensions: &value.exclude_ext,
+            exclude_dirs: &value.exclude_dir,
             include_hidden_files: value.include_hidden_files,
             max_file_size: value.max_file_size,
             min_file_size: value.min_file_size,
@@ -113,6 +114,7 @@ pub struct FileInfo {
     pub path: PathBuf,
     pub size: u64,
     pub modified: SystemTime,
+    pub identity: FileIdentity,
 }
 
 impl TryFrom<PathBuf> for FileInfo {
@@ -123,6 +125,16 @@ impl TryFrom<PathBuf> for FileInfo {
             path: value,
             size: metadata.len(),
             modified: metadata.modified()?,
+            identity: FileIdentity {
+                dev: metadata.dev(),
+                ino: metadata.ino(),
+            },
         })
     }
+}
+
+#[derive(Debug, Ord, Eq, PartialEq, PartialOrd)]
+pub(crate) struct FileIdentity {
+    pub(crate) dev: u64,
+    pub(crate) ino: u64,
 }

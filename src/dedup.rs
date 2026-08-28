@@ -20,7 +20,7 @@ struct DeletionPlan<'a> {
 
 pub fn run(options: Options) -> Result<(), DedupError> {
     dbg!(&options);
-    let files = find_files(&options.root_dir, (&options).into())?;
+    let files = find_files(&options.root_dir, options.file_filters())?;
 
     let candidates = find_candidates(&files)?;
     let duplicates = find_duplicates(&candidates)?;
@@ -84,7 +84,6 @@ fn format_size(bytes: u64) -> String {
 fn plan_deletion<'a>(duplicates: &[DuplicateGroup<'a>], policy: KeepPolicy) -> DeletionPlan<'a> {
     let mut groups = Vec::new();
     for group in duplicates {
-        // TODO: remove unwrap
         let keeper = choose_keeper(group, policy);
         let to_delete = group
             .files
@@ -119,8 +118,22 @@ fn execute_deletion_plan(plan: &DeletionPlan) -> Result<(), DedupError> {
     for group in &plan.groups {
         println!("Group Keeper: '{}'", group.keeper.path.display());
         for file in &group.to_delete {
-            println!("  Removing '{}'", file.path.display());
+            if file_identity_is_preserved(file) {
+                println!("  Removing '{}'", file.path.display());
+            } else {
+                return Err(DedupError::Delete {
+                    path: file.path.to_string_lossy().to_string(),
+                });
+            }
         }
     }
     Ok(())
+}
+
+fn file_identity_is_preserved(file: &FileInfo) -> bool {
+    let Ok(current) = FileInfo::try_from(file.path.clone()) else {
+        return false;
+    };
+
+    file.identity == current.identity && file.size == current.size
 }

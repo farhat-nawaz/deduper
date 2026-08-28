@@ -30,6 +30,8 @@ pub enum DedupError {
     },
     #[error("{message}")]
     InvalidArgument { message: String },
+    #[error("File Identity changed since discovery. Skipping... {path}")]
+    Delete { path: String },
     #[error("failed to read file")]
     FileRead(#[from] std::io::Error),
 }

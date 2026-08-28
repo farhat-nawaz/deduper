@@ -1,20 +1,3 @@
-//Find all files under a directory.
-//
-//For each file:
-//    get its size
-//    read its first 1 MB
-//    calculate a fingerprint
-//    put it into a bucket based on that fingerprint
-//
-//For each bucket containing multiple files:
-//    compare the files' complete contents
-//    identify actual duplicates
-//
-//For each duplicate group:
-//    determine which file has the newest modification time
-//    keep that file
-//    remove the others
-
 mod cli;
 mod dedup;
 mod duplicates;
@@ -39,16 +22,16 @@ fn main() -> anyhow::Result<()> {
 //  - shortest path
 //  - longest path
 //
-// TODO: File size
+// DONE: File size
 //
 //  - min
 //  - max
 //
-// TODO: File extensions
+// DONE: File extensions
 //
 //  - --exclude mp4,iso
 //
-// TODO: Hidden Files
+// DONE: Hidden Files
 //
 //  - --include-hidden
 //
@@ -56,7 +39,7 @@ fn main() -> anyhow::Result<()> {
 //
 //  - --follow-symlinks
 //
-// TODO: Directory Exclusion
+// DONE: Directory Exclusion
 //
 //  - --exclude node_modules
 //  - --exclude .git

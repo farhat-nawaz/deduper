@@ -2,7 +2,7 @@ use std::{path::PathBuf, str::FromStr};
 
 use clap::{Parser, ValueEnum};
 
-use crate::error::DedupError;
+use crate::{error::DedupError, files::FileFilter};
 
 #[derive(Parser, Debug)]
 #[command(name = "dedup", about = "Find and remove duplicate files")]
@@ -37,6 +37,12 @@ pub struct Options {
     /// Files with size less than this will be ignored
     #[arg(long)]
     pub(crate) min_file_size: Option<FileSize>,
+}
+
+impl Options {
+    pub(crate) fn file_filters(&self) -> FileFilter<'_> {
+        self.into()
+    }
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -80,8 +86,6 @@ impl FromStr for FileSize {
             _ => return Err(error()),
         };
 
-        Ok(FileSize(
-            number.checked_mul(multiplier).ok_or_else(|| error())?,
-        ))
+        Ok(FileSize(number.checked_mul(multiplier).ok_or_else(error)?))
     }
 }
