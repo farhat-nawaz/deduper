@@ -1,3 +1,6 @@
+#[cfg(not(unix))]
+compile_error!("deduper currently supports Unix-like systems only");
+
 mod cli;
 mod dedup;
 mod duplicates;

@@ -24,11 +24,11 @@ pub struct Options {
 
     /// Comma separated list of extensions to be ignored
     #[arg(long, value_delimiter = ',')]
-    pub(crate) exclude_ext: Vec<String>,
+    pub(crate) exclude_ext: Option<Vec<String>>,
 
     /// Comma separated list of directories to be ignored
     #[arg(long, value_delimiter = ',')]
-    pub(crate) exclude_dir: Vec<String>,
+    pub(crate) exclude_dir: Option<Vec<String>>,
 
     /// Files with size greater than this will be ignored
     #[arg(long)]

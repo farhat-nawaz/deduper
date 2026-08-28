@@ -43,7 +43,7 @@ fn should_descend(entry: &DirEntry, criteria: &FileFilter) -> bool {
 
     !criteria
         .exclude_dirs
-        .contains(&entry.file_name().to_string_lossy().to_string())
+        .is_some_and(|dirs| dirs.contains(&entry.file_name().to_string_lossy().to_string()))
 }
 
 fn should_keep(entry: &DirEntry, criteria: &FileFilter) -> bool {
@@ -79,7 +79,7 @@ fn should_keep(entry: &DirEntry, criteria: &FileFilter) -> bool {
     !path.extension().is_none_or(|ext| {
         criteria
             .exclude_extensions
-            .contains(&ext.to_string_lossy().to_lowercase())
+            .is_some_and(|extensions| extensions.contains(&ext.to_string_lossy().to_lowercase()))
     })
 }
 
@@ -90,8 +90,8 @@ fn is_hidden(path: &Path) -> bool {
 }
 
 pub(crate) struct FileFilter<'a> {
-    exclude_extensions: &'a [String],
-    exclude_dirs: &'a [String],
+    exclude_extensions: Option<&'a [String]>,
+    exclude_dirs: Option<&'a [String]>,
     include_hidden_files: bool,
     max_file_size: Option<FileSize>,
     min_file_size: Option<FileSize>,
@@ -100,8 +100,8 @@ pub(crate) struct FileFilter<'a> {
 impl<'a> From<&'a Options> for FileFilter<'a> {
     fn from(value: &'a Options) -> Self {
         Self {
-            exclude_extensions: &value.exclude_ext,
-            exclude_dirs: &value.exclude_dir,
+            exclude_extensions: value.exclude_ext.as_deref(),
+            exclude_dirs: value.exclude_dir.as_deref(),
             include_hidden_files: value.include_hidden_files,
             max_file_size: value.max_file_size,
             min_file_size: value.min_file_size,
@@ -126,6 +126,7 @@ impl TryFrom<PathBuf> for FileInfo {
         };
         let metadata = std::fs::metadata(&value).map_err(error)?;
         let modified = metadata.modified().map_err(error)?;
+
         Ok(FileInfo {
             path: value,
             size: metadata.len(),
