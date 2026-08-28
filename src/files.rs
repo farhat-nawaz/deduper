@@ -120,11 +120,16 @@ pub struct FileInfo {
 impl TryFrom<PathBuf> for FileInfo {
     type Error = DedupError;
     fn try_from(value: PathBuf) -> Result<Self, Self::Error> {
-        let metadata = std::fs::metadata(&value)?;
+        let error = |source| DedupError::Metadata {
+            path: value.clone(),
+            source,
+        };
+        let metadata = std::fs::metadata(&value).map_err(error)?;
+        let modified = metadata.modified().map_err(error)?;
         Ok(FileInfo {
             path: value,
             size: metadata.len(),
-            modified: metadata.modified()?,
+            modified: modified,
             identity: FileIdentity {
                 dev: metadata.dev(),
                 ino: metadata.ino(),

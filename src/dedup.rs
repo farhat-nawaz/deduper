@@ -19,7 +19,6 @@ struct DeletionPlan<'a> {
 }
 
 pub fn run(options: Options) -> Result<(), DedupError> {
-    dbg!(&options);
     let files = find_files(&options.root_dir, options.file_filters())?;
 
     let candidates = find_candidates(&files)?;
@@ -135,5 +134,7 @@ fn file_identity_is_preserved(file: &FileInfo) -> bool {
         return false;
     };
 
-    file.identity == current.identity && file.size == current.size
+    file.identity == current.identity
+        && file.size == current.size
+        && file.modified == current.modified
 }

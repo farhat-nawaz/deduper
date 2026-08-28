@@ -25,11 +25,14 @@ pub struct Fingerprint {
 }
 
 pub fn fingerprint_file(file_info: &FileInfo) -> Result<Fingerprint, DedupError> {
-    // This makes middle chunk centered around the middle of the file
     let mut file = fs::File::open(&file_info.path).map_err(|source| DedupError::Open {
         path: file_info.path.clone(),
         source,
     })?;
+    let error = |source| DedupError::Read {
+        path: file_info.path.clone(),
+        source,
+    };
     let mut hasher = Hasher::new();
 
     if file_info.size >= SAMPLE_SIZE {
@@ -44,17 +47,13 @@ pub fn fingerprint_file(file_info: &FileInfo) -> Result<Fingerprint, DedupError>
 
         hasher.update(b"MIDDLE");
         let middle_chunk = (file_info.size - CHUNK_SIZE) / 2;
-        file.seek(SeekFrom::Start(middle_chunk))?;
-        file.read_exact(&mut buffer)
-            .map_err(|source| DedupError::Read {
-                path: file_info.path.clone(),
-                source,
-            })?;
+        file.seek(SeekFrom::Start(middle_chunk)).map_err(error)?;
+        file.read_exact(&mut buffer).map_err(error)?;
         hasher.update(&buffer);
 
         hasher.update(b"END");
         let end_chunk = file_info.size - CHUNK_SIZE;
-        file.seek(SeekFrom::Start(end_chunk))?;
+        file.seek(SeekFrom::Start(end_chunk)).map_err(error)?;
         file.read_exact(&mut buffer)
             .map_err(|source| DedupError::Read {
                 path: file_info.path.clone(),
@@ -495,7 +494,10 @@ mod tests {
             let outcome = fingerprint_file(&path.as_path().into());
             writer.join().unwrap();
 
-            assert!(matches!(outcome, Ok(_) | Err(DedupError::FileRead(_))));
+            assert!(matches!(
+                outcome,
+                Ok(_) | Err(DedupError::Read { path: _, source: _ })
+            ));
         }
     }
 }

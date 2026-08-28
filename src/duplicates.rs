@@ -60,8 +60,14 @@ pub fn find_duplicates<'a>(
 // TODO: pass size as well to make sure the file hasn't changed in between
 pub fn hash_file(path: &Path) -> Result<Hash, DedupError> {
     let mut hasher = Hasher::new();
-    let mut file = fs::File::open(path)?;
-    io::copy(&mut file, &mut hasher)?;
+    let mut file = fs::File::open(path).map_err(|source| DedupError::Open {
+        path: path.to_path_buf(),
+        source,
+    })?;
+    io::copy(&mut file, &mut hasher).map_err(|source| DedupError::Read {
+        path: path.to_path_buf(),
+        source,
+    })?;
 
     Ok(hasher.finalize())
 }
@@ -111,10 +117,16 @@ mod tests {
     #[cfg(test)]
     impl Clone for FileInfo {
         fn clone(&self) -> Self {
+            use crate::files::FileIdentity;
+
             Self {
                 path: self.path.clone(),
                 size: self.size,
                 modified: self.modified,
+                identity: FileIdentity {
+                    dev: self.identity.dev,
+                    ino: self.identity.ino,
+                },
             }
         }
     }
@@ -294,7 +306,10 @@ mod tests {
         let files = vec![good, missing.as_path().into()];
 
         let result = find_candidates(&files);
-        assert!(matches!(result, Err(DedupError::FileRead(_))));
+        assert!(matches!(
+            result,
+            Err(DedupError::Read { path: _, source: _ })
+        ));
     }
 
     // ====================================================================
