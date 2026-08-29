@@ -1,9 +1,4 @@
-use std::{
-    collections::HashMap,
-    fs,
-    io::{self, Write},
-    path::Path,
-};
+use std::{collections::HashMap, fs, io, path::Path};
 
 use blake3::{Hash, Hasher};
 
@@ -35,16 +30,17 @@ pub fn find_candidates(files: &[FileInfo]) -> Result<Vec<CandidateGroup<'_>>, De
         .collect())
 }
 
-pub fn find_duplicates<'a>(
+pub fn find_duplicates<'a, F>(
     candidates: &[CandidateGroup<'a>],
-) -> Result<Vec<DuplicateGroup<'a>>, DedupError> {
+    progress: F,
+) -> Result<Vec<DuplicateGroup<'a>>, DedupError>
+where
+    F: Fn(&Path),
+{
     let mut duplicates: HashMap<Hash, Vec<&FileInfo>> = HashMap::new();
     for candidate_group in candidates {
         for file in &*candidate_group.files {
-            // TODO: this is to be removed. only here for dev purposes
-            print!("\r\x1b[2KProcessing: {}", file.path.display());
-            std::io::stdout().flush().unwrap();
-
+            progress(&file.path);
             let hash = hash_file(&file.path)?;
             duplicates.entry(hash).or_default().push(file);
         }
@@ -57,7 +53,6 @@ pub fn find_duplicates<'a>(
         .collect())
 }
 
-// TODO: pass size as well to make sure the file hasn't changed in between
 pub fn hash_file(path: &Path) -> Result<Hash, DedupError> {
     let mut hasher = Hasher::new();
     let mut file = fs::File::open(path).map_err(|source| DedupError::Open {
@@ -75,6 +70,7 @@ pub fn hash_file(path: &Path) -> Result<Hash, DedupError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
     use std::path::{Path, PathBuf};
     use tempfile::tempdir;
 
@@ -112,6 +108,11 @@ mod tests {
         groups.sort_by(|a, b| a.iter().map(|f| &f.path).cmp(b.iter().map(|f| &f.path)));
 
         groups
+    }
+
+    fn track_progress(file: &Path) {
+        print!("\r\x1b[2KProcessing: {}", file.display());
+        std::io::stdout().flush().unwrap();
     }
 
     #[cfg(test)]
@@ -319,7 +320,7 @@ mod tests {
     #[test]
     fn empty_candidates_returns_empty_duplicates() {
         let candidates: Vec<CandidateGroup> = Vec::new();
-        let result = find_duplicates(&candidates).unwrap();
+        let result = find_duplicates(&candidates, track_progress).unwrap();
         assert!(result.is_empty());
     }
 
@@ -334,7 +335,7 @@ mod tests {
             fingerprint: fp,
         });
 
-        let result = find_duplicates(&candidates).unwrap();
+        let result = find_duplicates(&candidates, track_progress).unwrap();
         assert!(result.is_empty());
     }
 
@@ -351,7 +352,7 @@ mod tests {
             fingerprint: fp,
         });
 
-        let result = find_duplicates(&candidates).unwrap();
+        let result = find_duplicates(&candidates, track_progress).unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].files.len(), 2);
     }
@@ -370,7 +371,7 @@ mod tests {
             fingerprint: fp,
         });
 
-        let result = find_duplicates(&candidates).unwrap();
+        let result = find_duplicates(&candidates, track_progress).unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].files.len(), 3);
     }
@@ -397,7 +398,7 @@ mod tests {
             fingerprint: fp_b,
         });
 
-        let result = find_duplicates(&candidates).unwrap();
+        let result = find_duplicates(&candidates, track_progress).unwrap();
         let normalized = normalize_groups(
             result
                 .iter()
@@ -438,7 +439,7 @@ mod tests {
             fingerprint: fp_a,
         });
 
-        let result = find_duplicates(&candidates).unwrap();
+        let result = find_duplicates(&candidates, track_progress).unwrap();
         assert!(
             result.is_empty(),
             "false-positive candidates should be split apart, not reported as duplicates"
@@ -465,7 +466,7 @@ mod tests {
 
         std::fs::remove_file(&a.path).unwrap();
 
-        let result = find_duplicates(&candidates);
+        let result = find_duplicates(&candidates, track_progress);
         assert!(result.is_err());
     }
 
@@ -482,7 +483,7 @@ mod tests {
         let files = vec![a, b];
 
         let candidates = find_candidates(&files).unwrap();
-        let duplicates = find_duplicates(&candidates).unwrap();
+        let duplicates = find_duplicates(&candidates, track_progress).unwrap();
 
         assert_eq!(duplicates.len(), 1);
         assert_eq!(duplicates[0].files.len(), 2);
@@ -509,7 +510,7 @@ mod tests {
             "should still collide at the cheap fingerprint stage"
         );
 
-        let duplicates = find_duplicates(&candidates).unwrap();
+        let duplicates = find_duplicates(&candidates, track_progress).unwrap();
         assert!(
             duplicates.is_empty(),
             "full-content hash should have told them apart"
@@ -552,7 +553,7 @@ mod tests {
         ];
 
         let candidates = find_candidates(&files).unwrap();
-        let duplicates = find_duplicates(&candidates).unwrap();
+        let duplicates = find_duplicates(&candidates, track_progress).unwrap();
         let normalized = normalize_groups(
             duplicates
                 .iter()

@@ -2,6 +2,8 @@ use crate::cli::{KeepPolicy, Options};
 use crate::duplicates::{DuplicateGroup, find_candidates, find_duplicates};
 use crate::error::DedupError;
 use crate::files::{FileInfo, find_files};
+use std::io::Write;
+use std::path::Path;
 
 struct DeletionGroup<'a> {
     keeper: &'a FileInfo,
@@ -22,7 +24,7 @@ pub fn run(options: Options) -> Result<(), DedupError> {
     let files = find_files(&options.root_dir, options.file_filters())?;
 
     let candidates = find_candidates(&files)?;
-    let duplicates = find_duplicates(&candidates)?;
+    let duplicates = find_duplicates(&candidates, track_progress)?;
     let deletion_plan = plan_deletion(&duplicates, options.keep);
 
     report_stats(&deletion_plan);
@@ -137,4 +139,10 @@ fn file_identity_is_preserved(file: &FileInfo) -> bool {
     file.identity == current.identity
         && file.size == current.size
         && file.modified == current.modified
+}
+
+// This is minimal. needs to be expanded
+fn track_progress(file: &Path) {
+    print!("\r\x1b[2KProcessing: {}", file.display());
+    std::io::stdout().flush().unwrap();
 }

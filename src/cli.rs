@@ -80,9 +80,9 @@ impl FromStr for FileSize {
 
         let multiplier = match unit.to_ascii_lowercase().as_str() {
             "b" => 1,
-            "kb" => 1_000,
-            "mb" => 1_000_000,
-            "gb" => 1_000_000_000,
+            "kb" | "kib" => 1024,
+            "mb" | "mib" => 1_048_576,
+            "gb" | "gib" => 1_073_741_824,
             _ => return Err(error()),
         };
 

@@ -38,11 +38,7 @@ pub fn fingerprint_file(file_info: &FileInfo) -> Result<Fingerprint, DedupError>
     if file_info.size >= SAMPLE_SIZE {
         let mut buffer = vec![0; CHUNK_SIZE as usize];
         hasher.update(b"START");
-        file.read_exact(&mut buffer)
-            .map_err(|source| DedupError::Read {
-                path: file_info.path.clone(),
-                source,
-            })?;
+        file.read_exact(&mut buffer).map_err(error)?;
         hasher.update(&buffer);
 
         hasher.update(b"MIDDLE");
@@ -54,19 +50,11 @@ pub fn fingerprint_file(file_info: &FileInfo) -> Result<Fingerprint, DedupError>
         hasher.update(b"END");
         let end_chunk = file_info.size - CHUNK_SIZE;
         file.seek(SeekFrom::Start(end_chunk)).map_err(error)?;
-        file.read_exact(&mut buffer)
-            .map_err(|source| DedupError::Read {
-                path: file_info.path.clone(),
-                source,
-            })?;
+        file.read_exact(&mut buffer).map_err(error)?;
         hasher.update(&buffer);
     } else {
         let mut buffer = vec![0; file_info.size as usize];
-        file.read_exact(&mut buffer)
-            .map_err(|source| DedupError::Read {
-                path: file_info.path.clone(),
-                source,
-            })?;
+        file.read_exact(&mut buffer).map_err(error)?;
         hasher.update(&buffer);
     }
 
