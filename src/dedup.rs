@@ -2,6 +2,7 @@ use crate::cli::{KeepPolicy, Options};
 use crate::duplicates::{DuplicateGroup, find_candidates, find_duplicates};
 use crate::error::{DedupError, DedupResult};
 use crate::files::{FileInfo, find_files};
+use std::fs;
 use std::io::Write;
 use std::path::Path;
 
@@ -119,13 +120,17 @@ fn execute_deletion_plan(plan: &DeletionPlan) -> DedupResult<()> {
     for group in &plan.groups {
         println!("Group Keeper: '{}'", group.keeper.path.display());
         for file in &group.to_delete {
-            if file_identity_is_preserved(file) {
-                println!("  Removing '{}'", file.path.display());
-            } else {
-                return Err(DedupError::Delete {
-                    path: file.path.to_string_lossy().to_string(),
+            if !file_identity_is_preserved(file) {
+                return Err(DedupError::IdentityChanged {
+                    path: file.path.clone(),
                 });
             }
+
+            fs::remove_file(&file.path).map_err(|source| DedupError::Delete {
+                path: file.path.clone(),
+                source,
+            })?;
+            println!("  Removed '{}'", file.path.display());
         }
     }
     Ok(())
