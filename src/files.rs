@@ -8,10 +8,10 @@ use walkdir::{DirEntry, WalkDir};
 
 use crate::{
     cli::{FileSize, Options},
-    error::DedupError,
+    error::{DedupError, DedupResult},
 };
 
-pub fn find_files(root: &Path, criteria: FileFilter) -> Result<Vec<FileInfo>, DedupError> {
+pub fn find_files(root: &Path, criteria: FileFilter) -> DedupResult<Vec<FileInfo>> {
     WalkDir::new(root)
         .into_iter()
         .filter_entry(|entry| should_descend(entry, &criteria))

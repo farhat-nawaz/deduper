@@ -1,6 +1,6 @@
 use crate::cli::{KeepPolicy, Options};
 use crate::duplicates::{DuplicateGroup, find_candidates, find_duplicates};
-use crate::error::DedupError;
+use crate::error::{DedupError, DedupResult};
 use crate::files::{FileInfo, find_files};
 use std::io::Write;
 use std::path::Path;
@@ -20,7 +20,7 @@ struct DeletionPlan<'a> {
     groups: Vec<DeletionGroup<'a>>,
 }
 
-pub fn run(options: Options) -> Result<(), DedupError> {
+pub fn run(options: Options) -> DedupResult<()> {
     let files = find_files(&options.root_dir, options.file_filters())?;
 
     let candidates = find_candidates(&files)?;
@@ -115,7 +115,7 @@ fn choose_keeper<'a>(group: &DuplicateGroup<'a>, policy: KeepPolicy) -> &'a File
     }
 }
 
-fn execute_deletion_plan(plan: &DeletionPlan) -> Result<(), DedupError> {
+fn execute_deletion_plan(plan: &DeletionPlan) -> DedupResult<()> {
     for group in &plan.groups {
         println!("Group Keeper: '{}'", group.keeper.path.display());
         for file in &group.to_delete {

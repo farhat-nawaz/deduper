@@ -46,12 +46,6 @@ impl Options {
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
-pub enum Action {
-    DryRun,
-    Delete,
-}
-
-#[derive(Debug, Clone, Copy, ValueEnum)]
 pub enum KeepPolicy {
     Newest,
     Oldest,

@@ -2,7 +2,7 @@ use std::{collections::HashMap, fs, io, path::Path};
 
 use blake3::{Hash, Hasher};
 
-use crate::error::DedupError;
+use crate::error::{DedupError, DedupResult};
 use crate::files::FileInfo;
 use crate::fingerprint::{Fingerprint, fingerprint_file};
 
@@ -15,7 +15,7 @@ pub(crate) struct DuplicateGroup<'a> {
     pub(crate) files: Vec<&'a FileInfo>,
 }
 
-pub fn find_candidates(files: &[FileInfo]) -> Result<Vec<CandidateGroup<'_>>, DedupError> {
+pub fn find_candidates(files: &[FileInfo]) -> DedupResult<Vec<CandidateGroup<'_>>> {
     let mut fingerprints: HashMap<Fingerprint, Vec<&FileInfo>> = HashMap::new();
 
     for file in files {
@@ -33,7 +33,7 @@ pub fn find_candidates(files: &[FileInfo]) -> Result<Vec<CandidateGroup<'_>>, De
 pub fn find_duplicates<'a, F>(
     candidates: &[CandidateGroup<'a>],
     progress: F,
-) -> Result<Vec<DuplicateGroup<'a>>, DedupError>
+) -> DedupResult<Vec<DuplicateGroup<'a>>>
 where
     F: Fn(&Path),
 {
@@ -53,7 +53,7 @@ where
         .collect())
 }
 
-pub fn hash_file(path: &Path) -> Result<Hash, DedupError> {
+pub fn hash_file(path: &Path) -> DedupResult<Hash> {
     let mut hasher = Hasher::new();
     let mut file = fs::File::open(path).map_err(|source| DedupError::Open {
         path: path.to_path_buf(),

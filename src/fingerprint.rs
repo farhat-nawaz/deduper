@@ -5,7 +5,10 @@ use std::{
 
 use blake3::{Hash, Hasher};
 
-use crate::{error::DedupError, files::FileInfo};
+use crate::{
+    error::{DedupError, DedupResult},
+    files::FileInfo,
+};
 
 // chunk of 64kb
 const CHUNK_SIZE: u64 = 64 * 1024;
@@ -24,7 +27,7 @@ pub struct Fingerprint {
     partial_hash: Hash,
 }
 
-pub fn fingerprint_file(file_info: &FileInfo) -> Result<Fingerprint, DedupError> {
+pub fn fingerprint_file(file_info: &FileInfo) -> DedupResult<Fingerprint> {
     let mut file = fs::File::open(&file_info.path).map_err(|source| DedupError::Open {
         path: file_info.path.clone(),
         source,
